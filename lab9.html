@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<head>
+<meta charset="UTF-8">
+<title>CS 424 Lab 9</title>
+<script src="https://cdn.jsdelivr.net/npm/three@0.115/build/three.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.115/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+
+"use strict";
+
+var canvas, renderer, scene, camera;
+var controls;
+var animating = false;
+var frameNumber = 0;
+
+let objects = {
+    structure: [],
+    pivots: [],
+    horses: [],
+}
+
+let mixers = [];
+
+function render() {
+    renderer.render(scene, camera);
+}
+
+function createWorld() {
+    renderer.setClearColor("black");
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(30, canvas.width / canvas.height, 0.001, 100);
+    camera.position.z = 40;
+    camera.position.y = 30;
+    var light = new THREE.DirectionalLight();
+    light.position.set(0, 0, 1);
+    camera.add(light);
+    scene.add(camera);
+
+    let floor = new THREE.Mesh(
+        new THREE.CylinderGeometry(12, 12, 0.6, 7, 1),
+        new THREE.MeshMatcapMaterial({
+            color: 0x7135a0
+        }),
+    );
+    scene.add(floor);
+
+    let topRoof = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 12, 3, 7, 1),
+        new THREE.MeshPhongMaterial({
+            color: 0x7135a0
+        })
+    );
+    topRoof.position.y = 8.2;
+    scene.add(topRoof);
+
+    let bottomRoof = new THREE.Mesh(
+        new THREE.CylinderGeometry(12, 12, 0.3, 7, 1),
+        new THREE.MeshPhongMaterial({
+            color: 0x7135a0
+        })
+    );
+    bottomRoof.position.y = 6.5;
+    scene.add(bottomRoof);
+
+    var textureLoader = new THREE.TextureLoader();
+    var texture = textureLoader.load('resources/Earth-1024x512.jpg');
+    var earthMaterial = new THREE.MeshBasicMaterial({ map: texture });
+    var earth = new THREE.Mesh(
+        new THREE.SphereGeometry(3.7, 32, 32),
+        earthMaterial
+    );
+    earth.position.y = 3.8;
+    scene.add(earth);
+
+    var poles = [];
+    var pivots = [];
+    var horses = [];
+    const loader = new THREE.GLTFLoader();
+    for (let i = 0; i < 7; i++) {
+        var pole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.2, 0.2, 6.5, 12, 1),
+            new THREE.MeshPhongMaterial({
+                color: 0xa08135,
+            })
+        );
+
+        var angle = i * Math.PI / 3.5;
+        var radius = 8.5;
+
+        var posX = Math.cos(angle) * radius;
+        var posY = 3.9;
+        var posZ = Math.sin(angle) * radius;
+
+        pole.position.set(posX, posY, posZ);
+        poles.push(pole);
+
+        var pivot = new THREE.Group();
+        pivot.add(pole);
+        scene.add(pivot);
+        pivots.push(pivot);
+
+        loader.load('https://threejs.org/examples/models/gltf/Horse.glb', (gltf) => {
+            gltf.scene.scale.multiplyScalar(0.025);
+            gltf.scene.position.x = poles[i].position.x;
+            gltf.scene.position.z = poles[i].position.z;
+            gltf.scene.position.y = 0.5;
+            gltf.scene.rotation.y = -3.25 - (Math.PI * i / 3.5);
+
+            let mixer = new THREE.AnimationMixer(gltf.scene);
+            mixers.push(mixer);
+
+            let action = mixer.clipAction(gltf.animations[0]);
+
+            action.play();
+
+            
+            pivot.add(gltf.scene);
+            horses.push(gltf.scene);
+        });
+    }
+
+    objects = {
+        pivots,
+        horses,
+        structure: [floor, topRoof, bottomRoof, earth]
+    }
+}
+
+function initAnimations() {
+    mixers.forEach((mixer) => {
+        mixer.update(0);
+    });
+}
+
+function updateAnimations(deltaTime) {
+    mixers.forEach((mixer) => {
+        mixer.update(deltaTime);
+    });
+}
+
+function updateForFrame() {
+    const { horses, ...rest } = objects;
+
+    for (const horse of horses) {
+    }
+
+    for (const i in rest) {
+        for (const element of objects[i]) {
+            element.rotation.y += 0.01;
+        }
+    }
+}
+
+function installOrbitControls() {
+    controls = new THREE.OrbitControls(camera, canvas);
+    controls.noPan = true;
+    controls.noZoom = true;
+    controls.staticMoving = true;
+
+    function move() {
+        controls.update();
+        if (!animating) {
+            render();
+        }
+    }
+
+    function down() {
+        document.addEventListener("mousemove", move, false);
+    }
+
+    function up() {
+        document.removeEventListener("mousemove", move, false);
+    }
+
+    function touch(event) {
+        if (event.touches.length == 1) {
+            move();
+        }
+    }
+
+    canvas.addEventListener("mousedown", down, false);
+    canvas.addEventListener("touchmove", touch, false);
+}
+
+function doAnimateCheckbox() {
+    var run = document.getElementById("animateCheckbox").checked;
+    if (run != animating) {
+        animating = run;
+        if (animating) {
+            requestAnimationFrame(doFrame);
+        }
+    }
+}
+
+function doFrame() {
+    if (animating) {
+        frameNumber++;
+        updateForFrame();
+        updateAnimations(0.01);
+        render();
+        requestAnimationFrame(doFrame);
+    }
+}
+
+function init() {
+    try {
+        canvas = document.getElementById("glcanvas");
+        renderer = new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: true,
+            alpha: false
+        });
+    } catch (e) {
+        document.getElementById("message").innerHTML = "<b>Sorry, an error occurred:<br>" +
+            e + "</b>";
+        return;
+    }
+    document.getElementById("animateCheckbox").checked = false;
+    document.getElementById("animateCheckbox").onchange = doAnimateCheckbox;
+    createWorld();
+    initAnimations();
+    installOrbitControls();
+    render();
+}
+
+
+</script>
+</head>
+<body onload="init()">
+
+<h2>Three.js Modeling Demo: Merry-Go-Round</h2>
+
+<noscript>
+   <p style="color: #AA0000; font-weight: bold">Sorry, but this page requires JavaScript!</p>
+</noscript>
+
+<p style="color:#AA0000; font-weight: bold" id="message">
+</p>
+
+<p>
+   <label><input type="checkbox" id="animateCheckbox"><b>Animate</b></label>
+   <b style="margin-left:50px">Use the mouse to rotate the model.</b>
+</p>
+
+<div id="canvas-holder" style="float:left; border: thin solid black; background-color: white">
+   <canvas width=1200 height=600 id="glcanvas"></canvas>
+</div>
+
+</body>
+</html>
